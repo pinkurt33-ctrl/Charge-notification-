@@ -14,23 +14,29 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.PrintWriter
+import java.io.StringWriter
 
 class MainActivity : Activity() {
 
     private var testPlayer: MediaPlayer? = null
-    private lateinit var status: TextView
-    private lateinit var toggle: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         val prefs = getSharedPreferences("cs", MODE_PRIVATE)
-        val crash = prefs.getString("crash", null)
-        if (crash != null) {
-            showCrash(crash, prefs)
-            return
+        try {
+            val old = prefs.getString("crash", null)
+            if (old != null) {
+                showError(old, prefs)
+                return
+            }
+            buildUi(prefs)
+        } catch (e: Throwable) {
+            showError(trace(e), prefs)
         }
+    }
 
+    private fun buildUi(prefs: SharedPreferences) {
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -43,20 +49,19 @@ class MainActivity : Activity() {
             setPadding(60, 60, 60, 60)
             setBackgroundColor(Color.parseColor("#101820"))
         }
-
         val title = TextView(this).apply {
             text = "⚡ Charge Sound"
             textSize = 30f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         }
-        status = TextView(this).apply {
+        val status = TextView(this).apply {
             textSize = 16f
             setTextColor(Color.parseColor("#FFD54F"))
             gravity = Gravity.CENTER
             setPadding(0, 30, 0, 40)
         }
-        toggle = Button(this)
+        val toggle = Button(this)
         val testOn = Button(this).apply { text = "▶ Test: Charger lagane wala sound" }
         val testOff = Button(this).apply { text = "▶ Test: Charger nikalne wala sound" }
 
@@ -67,49 +72,64 @@ class MainActivity : Activity() {
         }
 
         toggle.setOnClickListener {
-            val on = !prefs.getBoolean("enabled", false)
-            prefs.edit().putBoolean("enabled", on).apply()
-            val svc = Intent(this, ChargeService::class.java)
-            if (on) startForegroundService(svc) else stopService(svc)
-            refresh()
+            try {
+                val on = !prefs.getBoolean("enabled", false)
+                prefs.edit().putBoolean("enabled", on).apply()
+                val svc = Intent(this, ChargeService::class.java)
+                if (on) startForegroundService(svc) else stopService(svc)
+                refresh()
+            } catch (e: Throwable) {
+                showError(trace(e), prefs)
+            }
         }
-        testOn.setOnClickListener { play(R.raw.charge_on) }
-        testOff.setOnClickListener { play(R.raw.charge_off) }
+        testOn.setOnClickListener { play(R.raw.charge_on, prefs) }
+        testOff.setOnClickListener { play(R.raw.charge_off, prefs) }
 
         listOf(title, status, toggle, testOn, testOff).forEach { root.addView(it) }
         setContentView(root)
         refresh()
     }
 
-    private fun showCrash(crash: String, prefs: SharedPreferences) {
+    private fun play(res: Int, prefs: SharedPreferences) {
+        try {
+            testPlayer?.release()
+            testPlayer = MediaPlayer.create(this, res)?.apply { start() }
+        } catch (e: Throwable) {
+            showError(trace(e), prefs)
+        }
+    }
+
+    private fun trace(e: Throwable): String {
+        val sw = StringWriter()
+        e.printStackTrace(PrintWriter(sw))
+        return sw.toString()
+    }
+
+    private fun showError(text: String, prefs: SharedPreferences) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(30, 60, 30, 30)
             setBackgroundColor(Color.parseColor("#101820"))
         }
         val clear = Button(this).apply {
-            text = "Clear karke app kholo"
+            this.text = "Clear karke app kholo"
             setOnClickListener {
                 prefs.edit().remove("crash").apply()
                 recreate()
             }
         }
         val info = TextView(this).apply {
-            text = "⚠️ Pichhli baar app crash hui. Is text ka screenshot bhejo:\n\n$crash"
+            this.text = "⚠️ Error aaya. Is text ka screenshot bhejo:\n\n$text"
             setTextColor(Color.WHITE)
             textSize = 12f
             setTextIsSelectable(true)
         }
-        val scroll = ScrollView(this).apply { addView(info) }
         box.addView(clear)
-        box.addView(scroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        box.addView(
+            ScrollView(this).apply { addView(info) },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
         setContentView(box)
-    }
-
-    private fun play(res: Int) {
-        testPlayer?.release()
-        testPlayer = MediaPlayer.create(this, res)?.apply { start() }
     }
 
     override fun onDestroy() {
