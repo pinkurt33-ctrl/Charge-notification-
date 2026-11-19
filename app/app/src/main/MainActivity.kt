@@ -3,6 +3,7 @@ package com.pinku.chargesound
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.MediaPlayer
@@ -11,6 +12,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 class MainActivity : Activity() {
@@ -22,13 +24,18 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val prefs = getSharedPreferences("cs", MODE_PRIVATE)
+        val crash = prefs.getString("crash", null)
+        if (crash != null) {
+            showCrash(crash, prefs)
+            return
+        }
+
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-
-        val prefs = getSharedPreferences("cs", MODE_PRIVATE)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -72,6 +79,32 @@ class MainActivity : Activity() {
         listOf(title, status, toggle, testOn, testOff).forEach { root.addView(it) }
         setContentView(root)
         refresh()
+    }
+
+    private fun showCrash(crash: String, prefs: SharedPreferences) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(30, 60, 30, 30)
+            setBackgroundColor(Color.parseColor("#101820"))
+        }
+        val clear = Button(this).apply {
+            text = "Clear karke app kholo"
+            setOnClickListener {
+                prefs.edit().remove("crash").apply()
+                recreate()
+            }
+        }
+        val info = TextView(this).apply {
+            text = "⚠️ Pichhli baar app crash hui. Is text ka screenshot bhejo:\n\n$crash"
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            setTextIsSelectable(true)
+        }
+        val scroll = ScrollView(this).apply { addView(info) }
+        box.addView(clear)
+        box.addView(scroll, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(box)
     }
 
     private fun play(res: Int) {
